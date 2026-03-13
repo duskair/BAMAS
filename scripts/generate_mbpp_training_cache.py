@@ -229,8 +229,6 @@ def generate_cache_single_pattern_budget(args, pattern_idx: int, budget_idx: int
             p.join()
     output_path = params['data']['offline_dataset_path']
     base_path, ext = os.path.splitext(output_path)
-    if "_mbpp" not in base_path:
-        base_path = base_path.replace("offline_rl_dataset", "offline_rl_dataset_mbpp")
     if args.begin_with > 0 or args.num_samples != -1:
         batch_suffix = f"_batch_{start_idx}_{end_idx-1}"
         single_suffix = f"_pattern_{pattern_idx}_budget_{budget_idx}{batch_suffix}"
@@ -245,7 +243,7 @@ def generate_cache_single_pattern_budget(args, pattern_idx: int, budget_idx: int
     print(f"Budget: {target_budget} (idx={budget_idx})")
     if incorrect_res_data:
         base_dir = os.path.dirname(output_path)
-        incorrect_base_path = base_path.replace("offline_rl_dataset_mbpp", "incorrect_res_data_mbpp")
+        incorrect_base_path = base_path.replace("offline_rl_dataset", "incorrect_res_data")
         incorrect_output_path = f"{incorrect_base_path}_incorrect{single_suffix}.json"
         with open(incorrect_output_path, 'w', encoding='utf-8') as f:
             for entry in incorrect_res_data:
@@ -389,10 +387,6 @@ def main(args):
         for p in workers:
             p.join()
     output_path = params['data']['offline_dataset_path']
-    base_path, ext = os.path.splitext(output_path)
-    if "_mbpp" not in base_path:
-        base_path = base_path.replace("offline_rl_dataset", "offline_rl_dataset_mbpp")
-        output_path = f"{base_path}{ext}"
     if args.begin_with > 0 or args.num_samples != -1:
         base_path, ext = os.path.splitext(output_path)
         batch_suffix = f"_batch_{start_idx}_{end_idx-1}"
@@ -406,9 +400,9 @@ def main(args):
         base_dir = os.path.dirname(output_path)
         if args.begin_with > 0 or args.num_samples != -1:
             batch_suffix = f"_batch_{start_idx}_{end_idx-1}"
-            incorrect_output_path = os.path.join(base_dir, f"incorrect_res_data_mbpp{batch_suffix}.json")
+            incorrect_output_path = os.path.join(base_dir, f"incorrect_res_data{batch_suffix}.json")
         else:
-            incorrect_output_path = os.path.join(base_dir, "incorrect_res_data_mbpp.json")
+            incorrect_output_path = os.path.join(base_dir, "incorrect_res_data.json")
         os.makedirs(os.path.dirname(incorrect_output_path), exist_ok=True)
         with open(incorrect_output_path, 'w', encoding='utf-8') as f:
             for entry in incorrect_res_data:

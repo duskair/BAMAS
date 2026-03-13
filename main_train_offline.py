@@ -12,6 +12,22 @@ from torch.utils.data import Dataset, DataLoader
 from torch.distributions import Categorical
 from eapae_agent_sys.utils.config_loader import ConfigLoader
 from eapae_agent_sys.planning.high_level_policy import HighLevelPolicy
+
+
+def resolve_offline_dataset_path(dataset_name, configured_path):
+    """Return the canonical offline dataset path, with a fallback for legacy MBPP caches."""
+    candidate_paths = [configured_path]
+    if dataset_name.lower() == "mbpp":
+        legacy_path = configured_path.replace("offline_rl_dataset.jsonl", "offline_rl_dataset_mbpp.jsonl")
+        candidate_paths.append(legacy_path)
+    for path in candidate_paths:
+        if os.path.exists(path):
+            if path != configured_path:
+                print(f"Using legacy offline dataset path: {path}")
+            return path
+    return configured_path
+
+
 class OfflineRLDataset(Dataset):
     """PyTorch Dataset for loading the pre-generated offline RL experiences."""
     def __init__(self, file_path, use_ranking=True, use_weighted_ranking=False, config_loader=None):
@@ -406,10 +422,16 @@ def main(args):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    dataset_path = params['data']['offline_dataset_path']
+    dataset_path = resolve_offline_dataset_path(args.dataset_name, params['data']['offline_dataset_path'])
     if not os.path.exists(dataset_path):
         print(f"Error: Offline dataset not found at {dataset_path}")
-        print("Please run 'scripts/3_generate_training_cache.py' first.")
+        print("Download the raw benchmark data first:")
+        print("  python scripts/download_real_datasets.py --datasets gsm8k mbpp math")
+        print("Then generate the offline RL cache for your dataset:")
+        print("  gsm8k -> python scripts/generate_training_cache.py --num_samples -1")
+        print("  math  -> python scripts/generate_math_training_cache.py --num_samples -1")
+        print("  mbpp  -> python scripts/generate_mbpp_training_cache.py --num_samples -1")
+        print("More details are available in docs/datasets.md.")
         return
     dataset = OfflineRLDataset(dataset_path, use_ranking=False, use_weighted_ranking=False, config_loader=config_loader)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)

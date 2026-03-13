@@ -14,3 +14,4 @@ tqdm
 requests
 duckduckgo-search
 numpy
+datasets
