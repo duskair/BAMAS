@@ -4,82 +4,112 @@ This repository contains the implementation for the AAAI-26 paper **"BAMAS: Stru
 
 ## Overview
 
-BAMAS is a framework for constructing budget-aware multi-agent systems that optimally balance performance and cost. The system automatically selects appropriate LLMs and collaboration topologies to solve tasks within specified budget constraints.
+BAMAS is a framework for constructing budget-aware multi-agent systems that balance performance and cost. The system selects both LLM configurations and collaboration topologies under a user-specified budget constraint.
 
 ## Project Structure
 
-```
+```text
 BAMAS/
-├── eapae_agent_sys/          # Core system implementation
-│   ├── agents/               # Agent implementations and configurations
-│   ├── planning/             # Resource planning and topology selection
-│   ├── execution/            # Task execution engine
-│   ├── utils/                # Utility functions and API wrappers
-│   └── data_processing/      # Dataset loaders and preprocessing
-├── configs/                  # Configuration files
-│   ├── 0_agent_library*.yml  # Agent specifications
-│   ├── 1_role_compatibility.yml # Role definitions
-│   ├── 2_collaboration_patterns.json # Topology configurations
-│   ├── 3_training_params*.yml # Training parameters
-│   └── 4_*_dataset_config.yml # Dataset configurations
-├── scripts/                  # Training data generation scripts
-├── experiments/              # Experiment execution scripts
-├── main_train_offline.py     # Main training script
-└── data/                     # Dataset storage (not included)
+|-- eapae_agent_sys/          # Core system implementation
+|   |-- agents/               # Agent implementations and configurations
+|   |-- planning/             # Resource planning and topology selection
+|   |-- execution/            # Task execution engine
+|   |-- utils/                # Utility functions and API wrappers
+|   `-- data_processing/      # Dataset loaders and preprocessing
+|-- configs/                  # Configuration files
+|-- scripts/                  # Dataset download and cache generation scripts
+|-- experiments/              # Experiment entry points
+|-- main_train_offline.py     # Offline RL training entry point
+`-- data/                     # Generated benchmark data and caches (not tracked)
 ```
 
-## Key Components
+## Dataset Preparation
 
-### Core System (`eapae_agent_sys/`)
+The repository does **not** include benchmark data or generated offline RL caches. Those files are expected to be created locally.
 
-- **Agents**: Modular agent implementations for different roles (planner, executor, critic)
-- **Planning**: Budget-constrained resource allocation and collaboration pattern selection
-- **Execution**: Multi-agent task execution engine with various topology support
-- **Utils**: Configuration management, LLM API wrappers, and evaluation utilities
-- **Data Processing**: Dataset loaders for MATH, MBPP, and GSM8K benchmarks
+Raw benchmark datasets can be downloaded into the repository layout with:
 
-### Configuration System
+```bash
+pip install -r requirements.txt
+python scripts/download_real_datasets.py --datasets gsm8k mbpp math
+```
 
-- **Agent Libraries**: Define available LLMs and their capabilities
-- **Collaboration Patterns**: Specify different multi-agent topologies (linear, star, feedback, planner-driven)
-- **Training Parameters**: Control reinforcement learning and optimization settings
-- **Dataset Configs**: Manage benchmark-specific configurations
+The script downloads from the following public sources:
 
-### Experiment Framework
+| Dataset | Public source | Local files created |
+| --- | --- | --- |
+| GSM8K | Hugging Face `openai/gsm8k` | `data/gsm8k/train.jsonl`, `data/gsm8k/test.jsonl` |
+| MBPP | Hugging Face `google-research-datasets/mbpp` | `data/mbpp/mbpp.jsonl` and processed split files under `data/processed/mbpp/` |
+| MATH | Hugging Face `EleutherAI/hendrycks_math` | `data/math/train/`, `data/math/test/`, and sampled subsets under `data/processed/math/` |
 
-- **Training**: Offline reinforcement learning for topology selection
-- **Evaluation**: Performance assessment across different budgets and datasets
+Detailed paths, cache-generation commands, and batch-generation notes are documented in [docs/datasets.md](docs/datasets.md).
 
 ## Quick Start
 
-### 1. Environment Setup
+### 1. Install dependencies
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure API keys in configs/secrets.yml
 ```
 
-### 2. Training
+### 2. Configure API keys
 
-```bash
-# Train the topology selection policy
-python main_train_offline.py --dataset math --config configs/3_training_params_math.yml
+Create `configs/secrets.yml` before generating offline RL data. Raw benchmark download does not require API keys, but cache generation does.
+
+```yaml
+api_keys:
+  deepseek: "YOUR_DEEPSEEK_API_KEY"
+  openai: "YOUR_OPENAI_COMPATIBLE_API_KEY"
+api_bases:
+  openai: "https://your-openai-compatible-base/v1"
 ```
 
-### 3. Evaluation
+### 3. Download the benchmark datasets
 
 ```bash
-# Run experiments with trained model
-python experiments/main_experiment_math.py --model_path models/trained_model.pth
+python scripts/download_real_datasets.py --datasets gsm8k mbpp math
+```
+
+### 4. Generate the offline RL dataset
+
+```bash
+# GSM8K
+python scripts/generate_training_cache.py --num_samples -1 --num_budget_steps 5 --num_workers 16
+
+# MATH
+python scripts/generate_math_training_cache.py --num_samples -1 --num_budget_steps 3 --num_workers 24
+
+# MBPP
+python scripts/generate_mbpp_training_cache.py --num_samples -1 --num_budget_steps 5 --num_workers 16
+```
+
+This creates the dataset files expected by offline training:
+
+- `data/processed/offline_rl_dataset.jsonl`
+- `data/processed/math/offline_rl_dataset.jsonl`
+- `data/processed/mbpp/offline_rl_dataset.jsonl`
+
+### 5. Train the topology selection policy
+
+```bash
+python main_train_offline.py --dataset_name gsm8k
+python main_train_offline.py --dataset_name math
+python main_train_offline.py --dataset_name mbpp
+```
+
+### 6. Run evaluation
+
+```bash
+python experiments/main_experiment.py
+python experiments/main_experiment_math.py
+python experiments/main_experiment_mbpp.py
 ```
 
 ## Supported Datasets
 
-- **MATH**: Mathematical reasoning problems
-- **MBPP**: Python code generation tasks  
 - **GSM8K**: Grade school math word problems
+- **MATH**: Competition-style mathematical reasoning problems
+- **MBPP**: Python code generation tasks
 
 ## Key Features
 
@@ -97,8 +127,3 @@ To be released
 ## License
 
 This project is licensed under the terms specified in the LICENSE file.
-
-## Notes
-
-- The `data/` directory should contain the benchmark datasets
-- API keys for LLM providers should be configured in `configs/secrets.yml`

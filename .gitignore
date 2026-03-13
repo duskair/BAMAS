@@ -26,7 +26,14 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Generated datasets and experiment artifacts
+data/gsm8k/
+data/mbpp/
 data/math/
+data/processed/
+outputs/
+experiments/results/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
