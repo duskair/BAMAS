@@ -1,6 +1,9 @@
 # BAMAS: Budget-Aware Multi-Agent Systems
 
 This repository contains the implementation for the AAAI-26 paper **"BAMAS: Structuring Budget-Aware Multi-Agent Systems"**.
+Yang, L., Luo, J., Liu, X., Lou, Y., & Chen, Z. (2026). 
+BAMAS: Structuring Budget-Aware Multi-Agent Systems. 
+Proceedings of the AAAI Conference on Artificial Intelligence, 40(35), 29802-29810. https://doi.org/10.1609/aaai.v40i35.40226
 
 ## Overview
 
