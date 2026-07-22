@@ -51,8 +51,8 @@ class OfflineRLDataset(Dataset):
             self.experiences = all_experiences
     def _apply_ranking_filter(self, all_experiences):
         """
-        For eachpieces(task, budget)combination，selectoptimalpatterndata
-        prioritize accuracy，consider efficiency only when accuracy is similar
+        For each pieces(task, budget) combination, select optimal pattern data
+        prioritize accuracy, consider efficiency only when accuracy is similar
         """
         groups = {}
         for exp in all_experiences:
@@ -88,7 +88,7 @@ class OfflineRLDataset(Dataset):
         return filtered_experiences
     def _apply_weighted_ranking(self, all_experiences):
         """
-        UseAlldata，but calculate eachsamplesofactualrewardfor weighted training
+        Use All data, but calculate each samples of actual reward for weighted training
         """
         weighted_experiences = []
         for exp in all_experiences:
@@ -113,7 +113,7 @@ class OfflineRLDataset(Dataset):
         return weighted_experiences
     def _compute_reward(self, exp):
         """
-        calculate singlepiecesexperienceofreward，Usein paperofcomposite reward function：
+        calculate single pieces experience of reward, Use in paper of composite reward function: 
         R_final(τ) = w_task · R_task + w_budget · R_budget
         """
         reward_params = self.reward_params
@@ -158,28 +158,28 @@ class OfflineRLDataset(Dataset):
                 exp['planning_feasible'],
                 exp['behavior_log_prob']
             )
-def calculate_rewards(is_correct, actual_cost, budget, planning_feasible, reward_params):
+def calculate_rewards(is_correct, actual_cost, budget, planning_feasible, reward_params): # same as _compute_reward but usable outside Dataset class; used during actual training/evaluation loops
     """
     Calculates rewards using the paper's composite reward function:
     R_final(τ) = w_task · R_task + w_budget · R_budget
     """
-    if not planning_feasible:
+    if not planning_feasible: # plan not feasible -> harsh penalty
         return reward_params.get('shaping_infeasible', reward_params['failure_penalty'])
-    if is_correct:
+    if is_correct: # task succeeds -> success reward
         R_task = reward_params['success_reward']
-    else:
+    else: # task fails -> failure penalty
         R_task = reward_params['failure_penalty']
-    if actual_cost > budget:
+    if actual_cost > budget: # goes over budget -> overflow penalty
         R_budget = -reward_params['overflow_penalty']
     else:
-        if is_correct:
+        if is_correct: # if correct and budget under, bonus scales by how much budget is saved
             R_budget = reward_params['efficiency_multiplier'] * (1 - (actual_cost / budget))
         else:
             R_budget = 0.0
     w_task = reward_params.get('task_weight', 1.0)
     w_budget = reward_params.get('budget_weight', 1.0)
     return w_task * R_task + w_budget * R_budget
-def train_epoch(policy, optimizer, dataloader, device, params, epoch=1, total_epochs=1, scheduler=None, eval_dataset=None):
+def train_epoch(policy, optimizer, dataloader, device, params, epoch=1, total_epochs=1, scheduler=None, eval_dataset=None): 
     """
     Helper function to train a single epoch using REINFORCE algorithm as described in the paper.
     """

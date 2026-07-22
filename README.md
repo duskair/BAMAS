@@ -95,7 +95,7 @@ This creates the dataset files expected by offline training:
 ### 5. Train the topology selection policy
 
 ```bash
-python main_train_offline.py --dataset_name gsm8k
+python main_train_offline.py --dataset_name gsm8k 
 python main_train_offline.py --dataset_name math
 python main_train_offline.py --dataset_name mbpp
 ```

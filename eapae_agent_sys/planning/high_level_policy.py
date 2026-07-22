@@ -32,6 +32,8 @@ class HighLevelPolicy(nn.Module):
         """
         with torch.no_grad():
             embedding = self.model.encode(task_descriptions, convert_to_tensor=True, device=self.device)
+        # Clone to convert inference-mode tensor to normal trainable tensor
+        embedding = embedding.clone()
         normalized_budget = (budgets.unsqueeze(1) / self.max_budget).to(torch.float32)
         embedding_processed = self.embedding_layer(embedding)
         budget_processed = self.budget_layer(normalized_budget)

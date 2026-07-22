@@ -26,5 +26,5 @@ outputs:
   results_dir: "outputs/results/"
 models:
   embedding_model: 'all-MiniLM-L6-v2'
-  filter_provider: 'deepseek'
-  filter_model: 'deepseek-chat' 
+  filter_provider: 'openai'
+  filter_model: 'qwen/qwen3.6-27b' 

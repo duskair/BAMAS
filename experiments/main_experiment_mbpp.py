@@ -24,6 +24,22 @@ from eapae_agent_sys.execution.execution_engine import ExecutionEngine
 from eapae_agent_sys.planning.high_level_policy import HighLevelPolicy
 from eapae_agent_sys.utils.llm_api import LLM_API
 from eapae_agent_sys.utils.evaluation import evaluate_mbpp_success
+
+# Difficulty-driven model-tier selection: The library has two tiers: 'Low' (llama-3.1-8b, cheap) and 'High' (llama-3.3-70b, strong).
+# Easy tasks are restricted to the cheap tier; hard tasks to the strong tier; medium tasks may use either and the ILP picks under the budget.
+DIFFICULTY_BANDS = [
+    (0.25, ["Low"]),           # easy   -> cheap tier only
+    (0.75, ["Low", "High"]),   # medium -> either tier, ILP decides under budget
+    (1.01, ["High"]),          # hard   -> strong tier only
+]
+
+def map_difficulty_to_tier(difficulty_score: float) -> list:
+    """Map a difficulty score in [0, 1] to the allowed agent config_levels."""
+    for threshold, tiers in DIFFICULTY_BANDS:
+        if difficulty_score < threshold:
+            return tiers
+    return DIFFICULTY_BANDS[-1][1]
+
 def monitor_workers(workers: list, heartbeat_dict: dict, stop_event: threading.Event, timeout: int):
     """
     A thread that monitors worker processes and terminates them if they hang.
@@ -37,8 +53,14 @@ def monitor_workers(workers: list, heartbeat_dict: dict, stop_event: threading.E
                 continue
             if time.time() - last_beat > timeout:
                 p.terminate()
-def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_type):
-    """Worker process to run a single experiment."""
+def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_type, difficulty=True):
+    """Worker process to run a single experiment.
+
+    Args:
+        difficulty: If True (default), difficulty drives the *model tier* the candidate agent pool is restricted to the config_levels for 
+        this task's difficulty via map_difficulty_to_tier (easy -> cheap 8b only), so the ILP can only build a team from that tier. 
+        If False, the difficulty score is still recorded, but has no effect.
+    """
     worker_pid = os.getpid()
     heartbeat_dict[worker_pid] = time.time()
     if device_type == 'cuda' and torch.cuda.is_available():
@@ -58,9 +80,9 @@ def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_ty
     num_patterns = len(config_loader.patterns['patterns'])
     max_budget = params['training']['budget_range'][1]
     policy_network = HighLevelPolicy(
-        embedding_dim=embedding_dim, 
-        num_patterns=num_patterns, 
-        max_budget=max_budget, 
+        embedding_dim=embedding_dim,
+        num_patterns=num_patterns,
+        max_budget=max_budget,
         device=device
     ).to(device)
     if model_state_dict is not None:
@@ -91,11 +113,28 @@ def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_ty
         planning_feasible = False
         inference_successful = False
         final_context = None
+        difficulty_score = None
         try:
             candidate_agents = semantic_filter.filter_candidates(task['question'], collaboration_pattern=selected_pattern)
             if not candidate_agents:
                 final_context = {"history": ["Planning failed: Semantic filter returned no candidate agents."]}
             else:
+                with torch.no_grad():
+                    predictor = execution_engine.get_difficulty_predictor("mbpp")
+                    difficulty_score = predictor([task['question']], apply_sigmoid=True).item()
+
+                if difficulty:
+                    allowed_tiers = map_difficulty_to_tier(difficulty_score)
+                    filtered = [a for a in candidate_agents
+                                if config_loader.agents.get(a, {}).get('config_level') in allowed_tiers]
+                    if filtered:
+                        candidate_agents = filtered
+                        print(f"\n[*] MBPP Difficulty->Tier: difficulty {difficulty_score:.4f} -> tiers {allowed_tiers} ({len(filtered)} candidate agents)")
+                    else:
+                        print(f"\n[*] MBPP Difficulty->Tier: no candidates in tiers {allowed_tiers}; keeping full pool")
+                else:
+                    print(f"\n[*] MBPP Difficulty recorded (baseline, no effect) -> Difficulty: {difficulty_score:.4f}")
+
                 agent_pool, is_feasible = low_level_instantiator.solve(
                     pattern_or_name=selected_pattern,
                     budget=budget,
@@ -109,7 +148,7 @@ def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_ty
                         test_cases_str = '\n'.join(test_cases)
                         enhanced_task_description += f"\n\nTest cases for reference:\n{test_cases_str}"
                     final_context, actual_cost = execution_engine.execute_hybrid(
-                        agent_pool, budget, enhanced_task_description, 
+                        agent_pool, budget, enhanced_task_description,
                         collaboration_pattern=selected_pattern,
                         dataset_type="mbpp"
                     )
@@ -128,6 +167,8 @@ def worker(work_queue, result_queue, heartbeat_dict, model_state_dict, device_ty
             "task_id": task.get('task_id', 'unknown'),
             "task_description": task['question'],
             "ground_truth_answer": task.get('answer', ''),
+            "difficulty_score": difficulty_score,
+            "difficulty": difficulty,
             "budget": budget,
             "action": pattern_idx,
             "pattern_name": selected_pattern['name'],
@@ -147,9 +188,13 @@ def main():
     parser.add_argument("--beginwith", type=int, default=0, help="Task index to start from (0-based)")
     parser.add_argument("--output_dir", type=str, default="experiments/results/mbpp", help="Output directory for results")
     parser.add_argument("--num_workers", type=int, default=16, help="Number of parallel worker processes")
+    parser.add_argument("--diff_off", action="store_true",
+                        help="Baseline: do not use difficulty to restrict model tier (record difficulty but ignore it)")
     args = parser.parse_args()
+    difficulty = not args.diff_off
     print("="*80)
     print("MAIN EXPERIMENT: PARALLEL FULL PIPELINE INFERENCE (MBPP DATASET)")
+    print(f"Difficulty -> tier: {'ON' if difficulty else 'OFF (baseline)'}")
     print("="*80)
     mp.set_start_method("spawn", force=True)
     config_loader = ConfigLoader(
@@ -175,14 +220,15 @@ def main():
     if args.model_path:
         model_path = args.model_path
     else:
-        model_path = os.path.join(params['outputs']['checkpoints_dir'], "high_level_policy_mbpp_offline_best.pth")
+        model_path = os.path.join(params['outputs']['checkpoints_dir'], "high_level_policy_offline_best_mbpp.pth")
     if os.path.exists(model_path):
         print(f"Loading trained MBPP model from: {model_path}")
         model_state_dict = torch.load(model_path, map_location='cpu')
     else:
         print(f"Warning: MBPP model not found at {model_path}")
-    budgets = [500.0, 875.0, 1250.0, 1625.0, 2000.0]
-    print(f"Testing with MBPP budgets: {budgets}")
+    budget_range = params.get('training', {}).get('budget_range', [500, 2000])
+    budgets = np.linspace(budget_range[0], budget_range[1], args.num_budget_steps).tolist()
+    print(f"Testing with budgets: {budgets}")
     os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     manager = mp.Manager()
@@ -211,10 +257,10 @@ def main():
     workers = []
     device_type = str(device).split(':')[0]
     for _ in range(args.num_workers):
-        p = mp.Process(target=worker, args=(work_queue, result_queue, heartbeat_dict, model_state_dict, device_type))
+        p = mp.Process(target=worker, args=(work_queue, result_queue, heartbeat_dict, model_state_dict, device_type, difficulty))
         p.start()
         workers.append(p)
-    TIMEOUT_SECONDS = 500
+    TIMEOUT_SECONDS = 300
     stop_event = threading.Event()
     monitor_thread = threading.Thread(
         target=monitor_workers,
@@ -253,6 +299,7 @@ def main():
                     "task_id": task.get('task_id', 'unknown'),
                     "task_description": task['question'],
                     "ground_truth_answer": task.get('answer', ''),
+                    "difficulty": difficulty,
                     "budget": budget,
                     "action": 0,
                     "pattern_name": "unknown",
@@ -272,39 +319,61 @@ def main():
                 p.terminate()
         for p in workers:
             p.join()
-    results_file = os.path.join(args.output_dir, f"experiment_results_{timestamp}.jsonl")
+    mode = "diffon" if difficulty else "diffoff"
+    results_file = os.path.join(args.output_dir, f"experiment_results_{mode}_{timestamp}.jsonl")
     print(f"\nSaving detailed results to: {results_file}")
     with open(results_file, 'w', encoding='utf-8') as f:
         for result in all_results:
             f.write(json.dumps(result) + "\n")
-    summary_file = os.path.join(args.output_dir, f"experiment_summary_{timestamp}.json")
+    with open(results_file, 'r', encoding='utf-8') as f:
+        all_results = [json.loads(line) for line in f if line.strip()]
+    summary_file = os.path.join(args.output_dir, f"experiment_summary_{mode}_{timestamp}.json")
     print(f"Generating summary statistics: {summary_file}")
+    all_patterns = config_loader.patterns['patterns']
     stats_by_budget = {}
     stats_by_pattern = {}
+    stats_by_budget_pattern = {}
     for budget in budgets:
         budget_results = [r for r in all_results if r['budget'] == budget]
         total = len(budget_results)
         correct = sum(1 for r in budget_results if r['is_correct'])
         feasible = sum(1 for r in budget_results if r['planning_feasible'])
-        avg_cost = np.mean([r['actual_cost'] for r in budget_results])
+        avg_cost = float(np.mean([r['actual_cost'] for r in budget_results])) if total > 0 else 0.0
         stats_by_budget[f"budget_{budget:.0f}"] = {
             "total_samples": total,
             "accuracy": correct / total if total > 0 else 0,
             "planning_feasible_rate": feasible / total if total > 0 else 0,
             "average_cost": avg_cost
         }
-    all_patterns = config_loader.patterns['patterns']
+        budget_pattern_stats = {}
+        for pattern_idx in range(len(all_patterns)):
+            pattern_results = [r for r in budget_results if r['action'] == pattern_idx]
+            total_pattern = len(pattern_results)
+            correct_pattern = sum(1 for r in pattern_results if r['is_correct'])
+            feasible_pattern = sum(1 for r in pattern_results if r['planning_feasible'])
+            avg_pattern_cost = float(np.mean([r['actual_cost'] for r in pattern_results])) if total_pattern > 0 else 0.0
+            budget_pattern_stats[f"pattern_{pattern_idx}"] = {
+                "pattern_name": all_patterns[pattern_idx]['name'],
+                "total_samples": total_pattern,
+                "accuracy": correct_pattern / total_pattern if total_pattern > 0 else 0,
+                "planning_feasible_rate": feasible_pattern / total_pattern if total_pattern > 0 else 0,
+                "selection_frequency": total_pattern / total if total > 0 else 0,
+                "average_cost": avg_pattern_cost
+            }
+        stats_by_budget_pattern[f"budget_{budget:.0f}"] = budget_pattern_stats
     for pattern_idx in range(len(all_patterns)):
         pattern_results = [r for r in all_results if r['action'] == pattern_idx]
         total = len(pattern_results)
         correct = sum(1 for r in pattern_results if r['is_correct'])
         feasible = sum(1 for r in pattern_results if r['planning_feasible'])
+        avg_cost = float(np.mean([r['actual_cost'] for r in pattern_results])) if total > 0 else 0.0
         stats_by_pattern[f"pattern_{pattern_idx}"] = {
             "pattern_name": all_patterns[pattern_idx]['name'],
             "total_samples": total,
             "accuracy": correct / total if total > 0 else 0,
             "planning_feasible_rate": feasible / total if total > 0 else 0,
-            "selection_frequency": total / len(all_results) if len(all_results) > 0 else 0
+            "selection_frequency": total / len(all_results) if len(all_results) > 0 else 0,
+            "average_cost": avg_cost
         }
     total_results = len(all_results)
     overall_accuracy = sum(1 for r in all_results if r['is_correct']) / total_results if total_results > 0 else 0
@@ -313,6 +382,7 @@ def main():
         "experiment_info": {
             "timestamp": timestamp,
             "model_path": model_path,
+            "difficulty": difficulty,
             "total_tasks": len(test_dataset),
             "budgets_tested": budgets,
             "total_experiments": total_results,
@@ -323,7 +393,8 @@ def main():
             "planning_feasible_rate": overall_feasible_rate
         },
         "performance_by_budget": stats_by_budget,
-        "performance_by_pattern": stats_by_pattern
+        "performance_by_pattern": stats_by_pattern,
+        "performance_by_budget_and_pattern": stats_by_budget_pattern
     }
     with open(summary_file, 'w', encoding='utf-8') as f:
         json.dump(summary, f, indent=2)
@@ -337,10 +408,15 @@ def main():
     for budget_key, stats in stats_by_budget.items():
         budget_val = budget_key.replace('budget_', '')
         print(f"  Budget {budget_val}: {stats['accuracy']:.3f} accuracy, {stats['planning_feasible_rate']:.3f} feasible")
-    print(f"\nPattern Selection Frequency:")
+    print(f"\nPattern Results by Budget:")
+    for budget_key, pattern_stats in stats_by_budget_pattern.items():
+        budget_val = budget_key.replace('budget_', '')
+        print(f"  Budget {budget_val}:")
+        for pattern_key, stats in pattern_stats.items():
+            print(f"    - {stats['pattern_name']}: {stats['accuracy']:.3f} accuracy, {stats['planning_feasible_rate']:.3f} feasible ({stats['selection_frequency']*100:.1f}% of budget samples)")
+    print(f"\nPattern Summary:")
     for pattern_key, stats in stats_by_pattern.items():
-        pattern_name = pattern_key.replace('pattern_', '')
-        print(f"  {pattern_name}: {stats['selection_frequency']:.3f} ({stats['selection_frequency']*100:.1f}%)")
+        print(f"  {stats['pattern_name']}: selection {stats['selection_frequency']*100:.1f}%, avg cost {stats['average_cost']:.2f}")
     print(f"\nResults saved to:")
     print(f"  Detailed: {results_file}")
     print(f"  Summary: {summary_file}")

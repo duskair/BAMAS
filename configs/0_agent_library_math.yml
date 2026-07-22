@@ -1,7 +1,7 @@
 agents:
 - config_level: High
-  model_name: deepseek-chat
-  provider: deepseek
+  model_name: openai/gpt-oss-120b
+  provider: openai
   role: Planner
   max_tokens: 320
   id: PlannerAgent_High
@@ -13,7 +13,7 @@ agents:
   cost_coeff_A: 0.27
   cost_coeff_B: 1.1
 - config_level: Low
-  model_name: gpt-4.1-nano
+  model_name: llama-3.1-8b-instant
   provider: openai
   role: Planner
   max_tokens: 320
@@ -26,8 +26,8 @@ agents:
   cost_coeff_A: 0.1
   cost_coeff_B: 0.4
 - config_level: High
-  model_name: deepseek-chat
-  provider: deepseek
+  model_name: openai/gpt-oss-120b
+  provider: openai
   role: Critic
   max_tokens: 1024
   id: SolutionCriticAgent_High
@@ -39,7 +39,7 @@ agents:
   cost_coeff_A: 0.27
   cost_coeff_B: 1.1
 - config_level: Low
-  model_name: gpt-4.1-nano
+  model_name: llama-3.1-8b-instant
   provider: openai
   role: Critic
   max_tokens: 1024
@@ -52,8 +52,8 @@ agents:
   cost_coeff_A: 0.1
   cost_coeff_B: 0.4
 - config_level: High
-  model_name: deepseek-chat
-  provider: deepseek
+  model_name: openai/gpt-oss-120b
+  provider: openai
   role: Executor
   max_tokens: 1024
   id: MathExecutorAgent_High
@@ -64,7 +64,7 @@ agents:
   cost_coeff_A: 0.27
   cost_coeff_B: 1.1
 - config_level: Low
-  model_name: gpt-4.1-nano
+  model_name: llama-3.1-8b-instant
   provider: openai
   role: Executor
   max_tokens: 1024
@@ -76,7 +76,7 @@ agents:
   cost_coeff_A: 0.1
   cost_coeff_B: 0.4
 - config_level: Low
-  model_name: gpt-4.1-nano
+  model_name: llama-3.1-8b-instant
   provider: openai
   role: Parser
   max_tokens: 320
@@ -88,8 +88,8 @@ agents:
   cost_coeff_A: 0.1
   cost_coeff_B: 0.4
 - config_level: High
-  model_name: deepseek-chat
-  provider: deepseek
+  model_name: openai/gpt-oss-120b
+  provider: openai
   role: Simplifier
   max_tokens: 128
   id: SimplificationAgent_High
@@ -100,7 +100,7 @@ agents:
   cost_coeff_A: 0.27
   cost_coeff_B: 1.1
 - config_level: Low
-  model_name: gpt-4.1-nano
+  model_name: llama-3.1-8b-instant
   provider: openai
   role: Simplifier
   max_tokens: 320

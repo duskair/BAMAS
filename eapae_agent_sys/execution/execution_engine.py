@@ -3,9 +3,12 @@ import json
 import re
 from typing import Dict, Any, Tuple
 import copy
+import torch
+import os
 from eapae_agent_sys.utils.config_loader import ConfigLoader
 from eapae_agent_sys.agents.base_agent import BaseAgent
 from eapae_agent_sys.utils.evaluation import evaluate_success
+from eapae_agent_sys.planning.difficulty_predictor import DifficultyPredictor2
 class AgentFactory:
     """Dynamically creates agent instances from their IDs."""
     _agent_class_mapping = {
@@ -64,6 +67,24 @@ class ExecutionEngine:
         self.planner_instance = self._create_agent_instance_by_id("PlannerAgent_High")
         self.resource_pool = {}
         self.initial_pool = {}
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+    # chooses trained difficulty predictor based on dataset type; defaults to gsm8k if not found
+        self.difficulty_predictors = {}
+        for ds in ["gsm8k", "math", "mbpp"]:
+            predictor = DifficultyPredictor2(device=self.device, freeze_encoder=True,
+                                           model_src="sentence-transformers/all-mpnet-base-v2",
+                                           prepend_template=True)
+            path = f"outputs/checkpoints/difficulty_predictor_{ds}.pt"
+            if os.path.exists(path):
+                predictor.load_state_dict(torch.load(path, map_location=self.device))
+                predictor.eval()
+            self.difficulty_predictors[ds] = predictor
+        self.difficulty_predictor = self.difficulty_predictors.get("gsm8k")
+
+    def get_difficulty_predictor(self, dataset_type: str = "gsm8k"):
+        """Return the appropriate difficulty predictor for the given dataset."""
+        return self.difficulty_predictors.get(dataset_type, self.difficulty_predictors.get("gsm8k"))
+
     def _force_final_answer(self, context: dict, reason: str) -> tuple[dict, float]:
         """
         Invokes the ForceOutputAgent to generate a best-effort final answer when the plan fails.
@@ -562,6 +583,7 @@ class ExecutionEngine:
         """
         New hybrid execution entry：select execution mode based on topology type
         """
+
         if not collaboration_pattern:
             return self._execute_with_planner(agent_pool, initial_budget, task_description, collaboration_pattern, dataset_type)
         topology_type = collaboration_pattern.get('topology_type', 'dynamic')

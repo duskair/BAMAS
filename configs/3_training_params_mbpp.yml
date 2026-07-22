@@ -25,8 +25,8 @@ outputs:
   results_dir: "outputs/results/mbpp/"
 models:
   embedding_model: 'all-MiniLM-L6-v2'
-  filter_provider: 'deepseek'
-  filter_model: 'deepseek-chat'
+  filter_provider: 'openai'
+  filter_model: 'qwen/qwen3.6-27b'
 code_execution:
   timeout_seconds: 10
   max_memory_mb: 256 
