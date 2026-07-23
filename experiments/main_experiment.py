@@ -28,8 +28,8 @@ from eapae_agent_sys.utils.evaluation import evaluate_success
 # Difficulty-driven model-tier selection:
 # Easy tasks are restricted to the cheap tier; hard tasks to the strong tier; medium tasks may use either and the ILP picks under the budget.
 DIFFICULTY_BANDS = [
-    (0.25, ["Low"]),           # easy   -> cheap 8b only
-    (0.75, ["Low", "High"]),   # medium -> either tier, ILP decides under budget
+    (0.4, ["Low"]),           # easy   -> cheap 8b only
+    (0.6, ["Low", "High"]),   # medium -> either tier, ILP decides under budget
     (1.01, ["High"]),          # hard   -> strong 70b only
 ]
 

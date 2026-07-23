@@ -28,8 +28,8 @@ from eapae_agent_sys.utils.evaluation import evaluate_math_success
 # Difficulty-driven model-tier selection: The library has two tiers: 'Low' (llama-3.1-8b, cheap) and 'High' (llama-3.3-70b, strong). 
 # Easy tasks are restricted to the cheap tier; hard tasks to the strong tier; medium tasks may use either and the ILP picks under the budget.
 DIFFICULTY_BANDS = [
-    (0.25, ["Low"]),           # easy   -> cheap tier only
-    (0.75, ["Low", "High"]),   # medium -> either tier, ILP decides under budget
+    (0.4, ["Low"]),           # easy   -> cheap tier only
+    (0.6, ["Low", "High"]),   # medium -> either tier, ILP decides under budget
     (1.01, ["High"]),          # hard   -> strong tier only
 ]
 

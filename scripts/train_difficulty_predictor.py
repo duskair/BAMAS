@@ -1,3 +1,8 @@
+"""
+Example:
+    python scripts/train_difficulty_predictor.py --dataset data/processed/mbpp/offline_rl_dataset.jsonl --epochs 30 --lr 1e-3 --output outputs/checkpoints/difficulty_predictor_mbpp.pt
+"""
+
 import argparse
 import json
 import os

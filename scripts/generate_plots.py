@@ -87,9 +87,9 @@ def plot_histogram_2(rows: list[dict], out_path: Path, dataset_name: str):
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
 
     bands = [
-        ("Low", 0.0, 0.25),
-        ("Medium", 0.25, 0.75),
-        ("High", 0.75, 1.0)
+        ("Low", 0.0, 0.33),
+        ("Medium", 0.4, 0.66),
+        ("High", 0.6, 1.0)
     ]
     budgets = sorted(list(set(r["budget"] for r in rows)))
 
